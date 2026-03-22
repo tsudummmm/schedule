@@ -632,7 +632,7 @@ export default function Home() {
         </div>
         <div className="flex gap-1 items-center">
           <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} className={`text-[10px] px-2 py-1 rounded font-bold border uppercase transition-colors ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-yellow-400' : 'bg-white border-gray-300 text-gray-600'}`}>
-            {theme === "light" ? "🌙 DARK" : "☀️ LIGHT"}
+            {theme === "light" ? " 🌙 " : " ☀️ "}
           </button>
           <button onClick={() => setShowClock(!showClock)} className={`text-[10px] px-2 py-1 rounded font-bold border uppercase ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-200 border-gray-300'}`}>Clock {showClock ? "Off" : "On"}</button>
         </div>
