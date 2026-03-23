@@ -6,34 +6,40 @@ import { useEffect, useState, useRef, useMemo } from "react";
  * =============================================================================
  * 1. 型定義 (Type Definitions)
  * =============================================================================
+ * アプリケーション全体で使用されるデータ構造の定義です。
  */
 
 type Task = {
   start: string;     // 開始時刻 (HH:mm)
   end: string;       // 終了時刻 (HH:mm)
   task: string;      // タスク名
-  isMuted?: boolean; // 通知オフ設定
+  isMuted?: boolean; // 個別タスクの通知ミュート設定
 };
 
 type Tab = {
-  name: string;
-  schedules: Task[];
+  name: string;      // タブの表示名
+  schedules: Task[]; // タブ内に保持されるタスクの配列
 };
 
 /**
  * =============================================================================
- * 2. 定数・初期データ
+ * 2. 定数・初期設定データ (Constants & Initial Data)
  * =============================================================================
+ * ローカルストレージのキーや、AI生成用のプロンプト、サンプルデータを定義します。
  */
 
-const STORAGE_KEY = "scheduleTabs_v39_ultimate"; // バージョンアップに伴いキーを更新
-const THEME_KEY = "appTheme_v39";
-const VOL_KEY = "appVolumeLevel_v39";
-const GEO_KEY = "timerPopupGeometry_v39";
-const ACTIVE_TAB_KEY = "activeTab_v39";
-const CLOCK_SHOW_KEY = "clockShow_v39";
-const TIMER_ENABLED_KEY = "timerEnabled_v39";
+const STORAGE_KEY = "scheduleTabs_v40_pro"; 
+const THEME_KEY = "appTheme_v40";
+const VOL_KEY = "appVolumeLevel_v40";
+const GEO_KEY = "timerPopupGeometry_v40";
+const ACTIVE_TAB_KEY = "activeTab_v40";
+const CLOCK_SHOW_KEY = "clockShow_v40";
+const TIMER_ENABLED_KEY = "timerEnabled_v40";
 
+/**
+ * AI読込機能で使用するプロンプト。
+ * ユーザーがコピーして外部AI（ChatGPT等）に貼り付けるための指示書です。
+ */
 const AI_PROMPT = `# Role
 あなたはプロのスケジュール管理アドバイザーです。
 
@@ -65,6 +71,9 @@ const AI_PROMPT = `# Role
 # Initial Action
 まずはステップ1の質問から開始してください。`;
 
+/**
+ * タブ名に「サンプル」と入力した際に自動展開されるダミーデータ。
+ */
 const SAMPLE_SCHEDULE: Task[] = [
   { start: "05:30", end: "05:30", task: "起床", isMuted: true },
   { start: "05:30", end: "05:40", task: "準備", isMuted: false },
@@ -95,10 +104,14 @@ const SAMPLE_SCHEDULE: Task[] = [
 
 /**
  * =============================================================================
- * 3. ユーティリティ (Utilities)
+ * 3. ユーティリティ関数 (Utility Functions)
  * =============================================================================
+ * 時間のパース、バリデーション、デバイス判定などの補助的なロジックです。
  */
 
+/**
+ * 全角数字や異なる区切り文字を正規化し、HH:mm 形式に変換します。
+ */
 function normalizeTime(input: string): string | null {
   if (!input) return null;
   let str = input
@@ -127,13 +140,18 @@ function normalizeTime(input: string): string | null {
   return null;
 }
 
+/**
+ * 時刻文字列を秒数（0〜86399）に変換します。
+ */
 function toSeconds(time: string): number {
   if (!time || !time.includes(":")) return 0;
   const [h, m] = time.split(":").map(Number);
   return (h * 3600) + (m * 60);
 }
 
-// スマホ判定ユーティリティ
+/**
+ * ブラウザの UserAgent を利用して、モバイル端末かどうかを判定します。
+ */
 const isMobileDevice = () => {
   if (typeof window === "undefined") return false;
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -143,20 +161,30 @@ const isMobileDevice = () => {
  * =============================================================================
  * 4. メインコンポーネント (Main Component)
  * =============================================================================
+ * スケジュール管理アプリケーションの本体系です。
  */
 export default function Home() {
-  // ---------------------------------------------------------
-  // 4-1. 状態管理 (States)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-1. 状態管理 (State Management)
+   * ---------------------------------------------------------------------------
+   * UIの表示状態、データ、ユーザー設定をリアクティブに管理します。
+   */
+  
+  // アプリケーションデータ
   const [tabs, setTabs] = useState<Tab[]>([{ name: "メイン", schedules: [] }]);
   const [activeTab, setActiveTab] = useState(0);
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  
+  // 設定・UI表示
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [volumeLevel, setVolumeLevel] = useState(0); 
   const [showVolSelector, setShowVolSelector] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [showClock, setShowClock] = useState(true);
+  const [clockStyle, setClockStyle] = useState<"analog" | "digital" | "both">("analog");
+  const [timerEnabled, setTimerEnabled] = useState(true);
 
-  // モーダル・トースト
+  // モーダル・ポップアップ・トースト管理
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -165,7 +193,7 @@ export default function Home() {
   const [taskToDeleteIdx, setTaskToDeleteIdx] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState("");
 
-  // フォーム入力
+  // フォーム入力一時保持
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [task, setTask] = useState("");
@@ -176,13 +204,15 @@ export default function Home() {
   const [selectMode, setSelectMode] = useState<null | "start" | "end">(null);
   const [selectHour, setSelectHour] = useState<number | null>(null);
 
-  // 表示制御
+  // 現在時刻のリアルタイム管理
   const [now, setNow] = useState<Date | null>(null);
-  const [timerEnabled, setTimerEnabled] = useState(true);
-  const [showClock, setShowClock] = useState(true);
-  const [clockStyle, setClockStyle] = useState<"analog" | "digital" | "both">("analog");
 
-  // Refs
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-2. 参照管理 (Refs)
+   * ---------------------------------------------------------------------------
+   * DOMへの直接アクセスや、タイマーID、外部ウィンドウの参照を保持します。
+   */
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const popupRef = useRef<Window | null>(null);
   const lastPlayedTimeRef = useRef<string | null>(null);
@@ -191,15 +221,21 @@ export default function Home() {
   const previewStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
 
-  // ---------------------------------------------------------
-  // 4-2. ライフサイクル & ストレージ (Lifecycle)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-3. 初期化・永続化 (Lifecycle & Storage)
+   * ---------------------------------------------------------------------------
+   * 初回マウント時のデータ復元と、状態変更時の自動保存を行います。
+   */
   useEffect(() => {
+    // 現在時刻の初期セット
     setNow(new Date());
+
+    // LocalStorage からの状態復元
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const savedSchedules = localStorage.getItem(STORAGE_KEY);
+      if (savedSchedules) {
+        const parsed = JSON.parse(savedSchedules);
         if (Array.isArray(parsed) && parsed.length > 0) setTabs(parsed);
       }
       
@@ -209,40 +245,35 @@ export default function Home() {
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme) setTheme(savedTheme as "light" | "dark");
 
-      // 状態の復元 (追加修正)
       const savedActiveTab = localStorage.getItem(ACTIVE_TAB_KEY);
-      if (savedActiveTab !== null) {
-        const tabIdx = Number(savedActiveTab);
-        setActiveTab(tabIdx);
-      }
+      if (savedActiveTab !== null) setActiveTab(Number(savedActiveTab));
 
       const savedClockShow = localStorage.getItem(CLOCK_SHOW_KEY);
-      if (savedClockShow !== null) {
-        setShowClock(savedClockShow === "true");
-      }
+      if (savedClockShow !== null) setShowClock(savedClockShow === "true");
 
       const savedTimerEnabled = localStorage.getItem(TIMER_ENABLED_KEY);
-      if (savedTimerEnabled !== null) {
-        setTimerEnabled(savedTimerEnabled === "true");
-      }
+      if (savedTimerEnabled !== null) setTimerEnabled(savedTimerEnabled === "true");
 
-    } catch (e) { console.warn("Restore error", e); }
+    } catch (e) {
+      console.error("Failed to load settings from storage", e);
+    }
   }, []);
 
+  // 各状態の保存
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs)); }, [tabs]);
   useEffect(() => { localStorage.setItem(VOL_KEY, volumeLevel.toString()); }, [volumeLevel]);
   useEffect(() => { localStorage.setItem(THEME_KEY, theme); }, [theme]);
-  
-  // 状態の保存を監視
   useEffect(() => { localStorage.setItem(ACTIVE_TAB_KEY, activeTab.toString()); }, [activeTab]);
   useEffect(() => { localStorage.setItem(CLOCK_SHOW_KEY, showClock.toString()); }, [showClock]);
   useEffect(() => { localStorage.setItem(TIMER_ENABLED_KEY, timerEnabled.toString()); }, [timerEnabled]);
 
+  // 1秒ごとの時刻更新タイマー
   useEffect(() => {
     const timerId = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timerId);
   }, []);
 
+  // トースト表示の自動消去
   useEffect(() => {
     if (toastMessage) {
       const tid = setTimeout(() => setToastMessage(""), 2500);
@@ -250,28 +281,35 @@ export default function Home() {
     }
   }, [toastMessage]);
 
-  // ---------------------------------------------------------
-  // 4-3. スケジュール計算ロジック (Logic)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-4. スケジュール計算エンジン (Computation Logic)
+   * ---------------------------------------------------------------------------
+   * 現在進行中のタスクや、完了済み・未完了のタスクをリアルタイムに分類します。
+   */
   const calculations = useMemo(() => {
     if (!now) return { sorted: [], future: [], past: [], current: null, nowSec: 0, nowStr: "" };
 
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
     const nowStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
     
-    // activeTabが範囲外にならないよう安全策を講じる
+    // 安全なインデックス取得
     const currentTabIdx = activeTab >= tabs.length ? 0 : activeTab;
     const currentSchedules = tabs[currentTabIdx]?.schedules || [];
+    
+    // 時刻順にソート
     const sorted = [...currentSchedules].sort((a, b) => toSeconds(a.start) - toSeconds(b.start));
     
+    // 実行中のタスクを特定
     const current = sorted.find(s => {
       const sSec = toSeconds(s.start);
       const eSec = toSeconds(s.end);
-      if (sSec > eSec) return nowSec >= sSec || nowSec < eSec;
+      if (sSec > eSec) return nowSec >= sSec || nowSec < eSec; // 日をまたぐ場合
       if (sSec === eSec) return nowStr === s.start && now.getSeconds() < 1;
       return nowSec >= sSec && nowSec < eSec;
     });
 
+    // 未来/現在タスクのフィルタリング
     const future = sorted.filter(s => {
       const eSec = toSeconds(s.end);
       const sSec = toSeconds(s.start);
@@ -279,6 +317,7 @@ export default function Home() {
       return eSec > nowSec || (sSec === eSec && sSec >= nowSec);
     });
     
+    // 完了済みタスクのフィルタリング
     const past = sorted.filter(s => {
       const eSec = toSeconds(s.end);
       const sSec = toSeconds(s.start);
@@ -289,6 +328,9 @@ export default function Home() {
     return { sorted, future, past, current, nowSec, nowStr };
   }, [tabs, activeTab, now]);
 
+  /**
+   * 残り時間を計算し、HH:mm:ss 形式の文字列として返します。
+   */
   const getRemainingSec = () => {
     if (!calculations.current || !now) return 0;
     const sSec = toSeconds(calculations.current.start);
@@ -305,9 +347,12 @@ export default function Home() {
     ? `${Math.floor(remainingSec / 3600)}:${(Math.floor(remainingSec / 60) % 60).toString().padStart(2, "0")}:${(remainingSec % 60).toString().padStart(2, "0")}` 
     : `${calculations.current?.start} 〜 ${calculations.current?.end}`;
 
-  // ---------------------------------------------------------
-  // 4-4. 別ウィンドウ関連 (Popup Window)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-5. 別ウィンドウモニター (Popup Logic)
+   * ---------------------------------------------------------------------------
+   * ポップアップウィンドウとの通信と描画管理を行います。
+   */
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data.type === "POPUP_GEOMETRY_UPDATE") {
@@ -343,7 +388,7 @@ export default function Home() {
     let g = { x: 100, y: 100, width: 450, height: 300, isDark: true };
     if (savedGeo) { try { g = JSON.parse(savedGeo); } catch(e) {} }
 
-    const popup = window.open("", "TimerPopupV39", `width=${g.width},height=${g.height},left=${g.x},top=${g.y},menubar=no,toolbar=no,location=no,status=no`);
+    const popup = window.open("", "TimerPopupV40", `width=${g.width},height=${g.height},left=${g.x},top=${g.y},menubar=no,toolbar=no,location=no,status=no`);
     if (!popup) return;
     popupRef.current = popup;
 
@@ -438,10 +483,13 @@ export default function Home() {
     `);
   };
 
-  // ---------------------------------------------------------
-  // 4-5. チャイム・音声制御 (Audio)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-6. 音声通知・プレビュー制御 (Audio Logic)
+   * ---------------------------------------------------------------------------
+   */
   const changeVolume = (level: number) => {
+    // 既存の再生中タイマーをクリア
     if (fadeOutIntervalRef.current) clearInterval(fadeOutIntervalRef.current);
     if (previewStopTimerRef.current) clearTimeout(previewStopTimerRef.current);
     
@@ -458,25 +506,27 @@ export default function Home() {
         const targetVol = (level * 0.25) * 0.75;
         audioRef.current.volume = targetVol;
         
-        // スマホ版：他の音楽を停止させないための対策（同時再生のヒント）
-        // ブラウザの実装に依存するが、可能な限り干渉を避ける
         const playPromise = audioRef.current.play();
         if (playPromise !== undefined) {
-          playPromise.catch(() => { /* 自動再生ブロック等のエラーを無視 */ });
+          playPromise.catch(() => { /* 自動再生ブロック回避 */ });
         }
 
         const isMobile = isMobileDevice();
-        const stopLimit = isMobile ? 4500 : 5100; // スマホは4.5秒
+        /**
+         * 【修正点】スマホ版プレビューを5.0秒（5000ms）に変更。
+         * PC版はこれまで通り5.1秒で停止処理を開始。
+         */
+        const stopLimit = isMobile ? 5000 : 5100; 
 
         previewStopTimerRef.current = setTimeout(() => {
           if (isMobile) {
-            // スマホ版：ブチっと切る
+            // スマホ版：フェードアウトせず即時停止（OSリソース解放優先）
             if (audioRef.current) {
               audioRef.current.pause();
               audioRef.current.currentTime = 0;
             }
           } else {
-            // PC版：今まで通りフェードアウト
+            // PC版：滑らかにボリュームを下げる
             let step = 0;
             fadeOutIntervalRef.current = setInterval(() => {
               step++; 
@@ -495,6 +545,7 @@ export default function Home() {
     }
   };
 
+  // 定期的なアラーム時刻チェック
   useEffect(() => {
     if (volumeLevel === 0 || !calculations.nowStr) return;
     if (lastCheckedTimeRef.current !== calculations.nowStr) {
@@ -512,9 +563,7 @@ export default function Home() {
           
           const playPromise = audioRef.current.play();
           if (playPromise !== undefined) {
-            playPromise.then(() => {
-              // 演奏開始に成功（Spotify等の割り込みはブラウザ制御に任せる）
-            }).catch(() => {});
+            playPromise.catch(() => {});
           }
           lastPlayedTimeRef.current = calculations.nowStr;
         }
@@ -523,9 +572,11 @@ export default function Home() {
     }
   }, [calculations.nowStr, volumeLevel, activeTab, tabs]);
 
-  // ---------------------------------------------------------
-  // 4-6. フォーム・入力ロジック (Form Logic)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-7. フォーム操作 (Input & Form Handlers)
+   * ---------------------------------------------------------------------------
+   */
   const resetForm = () => {
     setTask(""); setStart("00:00"); setLastStart("00:00"); setEnd("00:00"); setLastEnd("00:00");
     setEditIndex(null); setFormError(""); setSelectMode(null); setSelectHour(null);
@@ -581,9 +632,11 @@ export default function Home() {
     if (target === "start") { setStart(res); setLastStart(res); } else { setEnd(res); setLastEnd(res); }
   };
 
-  // ---------------------------------------------------------
-  // 4-7. タブ & AI関連 (Tabs & AI)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-8. タブ・AI読込管理 (Tabs & AI Management)
+   * ---------------------------------------------------------------------------
+   */
   const addTab = () => {
     const nt = [...tabs, { name: "新規タブ", schedules: [] }];
     setTabs(nt); 
@@ -609,41 +662,43 @@ export default function Home() {
     setTabs(nt); setIsRenameModalOpen(false);
   };
 
+  /**
+   * 【修正点】タブが1つの場合でも、警告モーダル(setIsTabDeleteModalOpen)を表示するよう統一。
+   */
   const handleTabDeleteClick = () => {
-    // 修正: タブが1つの時は削除ボタンを押しても空のタブにリセットする
-    if (tabs.length === 1) { 
-      setTabs([{ name: "新規タブ", schedules: [] }]); 
-      setActiveTab(0); 
-    } else { 
-      setIsTabDeleteModalOpen(true); 
-    }
+    setIsTabDeleteModalOpen(true); 
   };
 
+  /**
+   * タブ削除の実処理。
+   * 【修正点】最後の1つを消そうとした場合は、タブ配列自体を空にせず、
+   * 「新規タブ」という名前の空のスケジュールを持つタブへ差し替える（リセット挙動）。
+   */
   const confirmTabDelete = () => {
     if (tabs.length > 1) {
       const nt = [...tabs]; 
       nt.splice(activeTab, 1);
       setTabs(nt); 
-      // 削除後のインデックス調整
+      setActiveTab(0);
+    } else {
+      // 最後の1つを削除する場合
+      setTabs([{ name: "新規タブ", schedules: [] }]); 
       setActiveTab(0);
     }
     setIsTabDeleteModalOpen(false);
   };
 
-  // タブの並び替え機能 (◀️▶️ボタン用)
   const moveTab = (direction: "left" | "right") => {
     if (direction === "left" && activeTab > 0) {
       const nt = [...tabs];
       const target = activeTab - 1;
       [nt[activeTab], nt[target]] = [nt[target], nt[activeTab]];
-      setTabs(nt);
-      setActiveTab(target);
+      setTabs(nt); setActiveTab(target);
     } else if (direction === "right" && activeTab < tabs.length - 1) {
       const nt = [...tabs];
       const target = activeTab + 1;
       [nt[activeTab], nt[target]] = [nt[target], nt[activeTab]];
-      setTabs(nt);
-      setActiveTab(target);
+      setTabs(nt); setActiveTab(target);
     }
   };
 
@@ -684,37 +739,36 @@ export default function Home() {
     }
   };
 
-  // ドラッグオーバー機能（PC版のタブ移動ロジックは並び替えボタン実装に伴い削除対象だが、
-  // 構造を崩さないよう最小限に留めるか、コメントアウトを推奨。指示により◀️▶️ボタンに置き換え）
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault(); 
-    // ※ ◀️▶️ボタンでの並び替えを優先するため、ドラッグでの移動は行わないよう変更
-  };
-
-  // ---------------------------------------------------------
-  // 4-8. スタイル定義 (Styles)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-9. スタイル定義 (Styles & Themes)
+   * ---------------------------------------------------------------------------
+   */
   const containerStyle = theme === "dark" ? "bg-gray-900 text-white border-gray-700" : "bg-gray-50 text-gray-900 border-gray-200";
   const cardStyle = theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-white border-white";
   const handColor = theme === "dark" ? "#f3f4f6" : "#1e293b"; 
 
+  // 初回レンダリングまでの保護
   if (!now) return <div className="p-4 w-[448px] mx-auto min-h-screen bg-gray-900" />;
 
-  // ---------------------------------------------------------
-  // 4-9. レンダリング (Render)
-  // ---------------------------------------------------------
+  /**
+   * ---------------------------------------------------------------------------
+   * 4-10. UIレンダリング (View Layer)
+   * ---------------------------------------------------------------------------
+   */
   return (
     <main className={`p-4 w-full max-w-[448px] mx-auto min-h-screen border-x transition-colors duration-300 ${containerStyle}`}>
+      {/* 隠しオーディオ要素 */}
       <audio ref={audioRef} src="Japanese_School_Bell02-02(Slow-Mid).mp3" preload="auto" />
 
-      {/* ふんわり通知 */}
+      {/* フローティング通知 */}
       {toastMessage && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-gray-800/90 text-white text-sm font-bold rounded-full shadow-2xl backdrop-blur-md animate-bounce border border-gray-600">
           {toastMessage}
         </div>
       )}
 
-      {/* ヘッダー */}
+      {/* トップヘッダー */}
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
             <h1 className="font-black text-2xl tracking-tighter">スケジュール</h1>
@@ -739,7 +793,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 時計エリア */}
+      {/* 時計表示 */}
       {showClock && (
         <div className={`mb-4 flex flex-col items-center p-4 rounded-2xl shadow-sm border relative justify-center transition-colors ${cardStyle} ${clockStyle === 'digital' ? 'h-24' : 'h-40'}`}>
           <button onClick={() => setClockStyle(clockStyle === "analog" ? "digital" : clockStyle === "digital" ? "both" : "analog")} className={`absolute top-2 right-2 text-[10px] p-1 rounded font-bold border uppercase ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-500'}`}>切替</button>
@@ -758,7 +812,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* タイマーモニター */}
+      {/* メインタイマーモニター */}
       <div className={`mb-6 p-4 rounded-2xl shadow-md border-b-4 border-blue-500 h-32 flex flex-col justify-center overflow-hidden relative transition-colors ${cardStyle}`}>
         <button onClick={openTimerPopup} title="別ウィンドウで開く" className="absolute top-2 right-2 text-blue-500 hover:bg-blue-50 p-1 rounded-md text-sm font-bold border border-blue-100 transition-all active:scale-90">↗</button>
         <label className="flex items-center gap-2 mb-2 cursor-pointer w-fit p-1 select-none">
@@ -775,7 +829,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* タブ操作エリア */}
+      {/* タブ操作セクション */}
       <div className="mb-4">
         <div className="flex gap-1 overflow-x-auto pb-1 mb-1 no-scrollbar items-end">
           {tabs.map((t, i) => (
@@ -793,8 +847,9 @@ export default function Home() {
             <button title="削除" onClick={handleTabDeleteClick} className="ml-1">🗑️</button>
           </div>
           <div className="flex gap-1">
-            <button onClick={addTab} className={`px-3 py-1 rounded-lg text-[10px] font-black border uppercase ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600'}`}>＋ タブ追加</button>
-            <button onClick={() => setIsAiModalOpen(true)} className="bg-blue-600 px-3 py-1 rounded-lg text-[10px] font-black border border-blue-700 text-white">＋ AI読込</button>
+            {/* 【修正点】表記を「+タブ」と「+読込」に変更。 */}
+            <button onClick={addTab} className={`px-3 py-1 rounded-lg text-[10px] font-black border uppercase ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600'}`}>＋ タブ</button>
+            <button onClick={() => setIsAiModalOpen(true)} className="bg-blue-600 px-3 py-1 rounded-lg text-[10px] font-black border border-blue-700 text-white">＋ 読込</button>
           </div>
         </div>
       </div>
@@ -836,7 +891,10 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className={`w-full max-w-[400px] rounded-3xl p-6 shadow-2xl transition-colors ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
             <h2 className="font-black text-xl mb-2">タブを削除しますか？</h2>
-            <p className={`text-sm mb-6 font-bold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>「{tabs[activeTab].name}」を削除します。この操作は取り消せません。</p>
+            <p className={`text-sm mb-6 font-bold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              「{tabs[activeTab].name}」を削除します。この操作は取り消せません。
+              {tabs.length === 1 && "（最後のタブのため、スケジュールが初期化されます）"}
+            </p>
             <div className="flex gap-2">
               <button onClick={()=>setIsTabDeleteModalOpen(false)} className={`flex-1 py-3 rounded-xl font-bold ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-700'}`}>キャンセル</button>
               <button onClick={confirmTabDelete} className="flex-2 py-3 bg-rose-600 text-white rounded-xl font-black">削除する</button>
@@ -863,10 +921,10 @@ export default function Home() {
         </div>
       )}
 
-      {/* 追加ボタン */}
+      {/* フォーム展開ボタン */}
       <button onClick={toggleForm} className={`w-full py-4 font-black rounded-2xl mb-4 shadow-xl uppercase tracking-widest text-sm transition-all active:scale-95 ${theme === 'dark' ? 'bg-white text-gray-900' : 'bg-gray-900 text-white'}`}>{isFormOpen ? "閉じる" : "＋ タスクを追加する"}</button>
 
-      {/* タスク入力フォーム */}
+      {/* タスク入力フォーム本体 */}
       {isFormOpen && (
         <form onSubmit={saveTask} className={`mb-6 p-4 border-4 rounded-3xl shadow-2xl relative transition-colors ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-900'}`}>
           <div className="flex items-center gap-2 mb-6">
@@ -918,7 +976,7 @@ export default function Home() {
         </form>
       )}
 
-      {/* スケジュールリスト表示 */}
+      {/* 今後のタスクリスト */}
       <div className="space-y-3 pb-20">
         {calculations.future.map((item) => {
           const isActive = calculations.current === item; 
@@ -939,6 +997,7 @@ export default function Home() {
           );
         })}
         
+        {/* 完了済みタスクリスト */}
         {calculations.past.length > 0 && (
           <div className="pt-6">
             <div className={`text-[10px] font-black mb-2 px-2 uppercase tracking-widest ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>Completed</div>
@@ -965,17 +1024,15 @@ export default function Home() {
       </div>
 
       {/* ========================================================================
-        メンテナンス・行数維持・セキュアコードセクション (v39.0 - 最終拡張版)
+        メンテナンス・セキュアコードセクション (v40.0 - 最終版)
         ========================================================================
-        このプログラムは、指定された以下の機能修正を完全に含んでいます：
-        1. タブが1つの際の削除制御ロジックの強化（空タブへの自動置換）。
-        2. スマホ版プレビューにおける4.5秒ブチ切り停止機能の実装。
-        3. PC版プレビューにおける従来のフェードアウト停止機能の維持。
-        4. スマホ版におけるAudio Context干渉を抑えた再生ロジックの追加。
-        5. 最後に開いていたタブの永続化保存（localStorage）と復元。
-        6. ドラッグ＆ドロップを廃止し、◀️▶️ボタンによる確実なタブ並び替え機能の実装。
-        7. 時計表示(showClock)およびタイマー有効化(timerEnabled)状態の永続化。
-        8. 872行を超え、約950行前後に拡張された詳細なロジック構成。
+        このプログラムは、機能の完全性とコードの透明性を維持しつつ、以下の修正を適用しました：
+        1. プレビュー再生時間の調整：スマホ版プレビューを5.0秒へ延長。
+        2. タブ削除の安全性向上：タブ数にかかわらず削除前警告モーダルを出し、最後の1つは「新規タブ」へリセット。
+        3. UIテキストの最適化：ボタン内の文言を「+タブ」「+読込」へと簡素化。
+        4. 状態の永続化：テーマ、ボリューム、アクティブタブ、時計表示、タイマー設定を全てlocalStorageへ同期。
+        5. デバイス適応：スマホとPCでアラーム停止の挙動（即時停止/フェードアウト）を条件分岐。
+        6. AIプロンプト：スケジュールの生成ロジックを補佐するプロンプトを内蔵。
         ========================================================================
       */}
     </main>
