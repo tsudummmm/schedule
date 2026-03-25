@@ -372,21 +372,17 @@ export default function Home() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
     if (popupRef.current && !popupRef.current.closed) {
       popupRef.current.postMessage({
         type: "UPDATE_TIMER",
         taskName: calculations.current?.task || "No Task",
-        // 文字列だけでなく、計算用の生データ（秒数や開始・終了時刻）を送るように変更
-        remainingSec: remainingSec, 
-        startTime: calculations.current?.start || "",
-        endTime: calculations.current?.end || "",
+        timerText: timerText,
         isWaiting: !calculations.current,
         timerEnabled: timerEnabled
       }, "*");
     }
-    // 監視対象に remainingSec を追加して、1秒ごとの変化を確実に伝えます
-  }, [calculations.current, remainingSec, timerEnabled]);
+  }, [calculations.current, timerText, timerEnabled]);
 
   const openTimerPopup = () => {
     if (popupRef.current && !popupRef.current.closed) { popupRef.current.focus(); return; }
@@ -433,7 +429,7 @@ useEffect(() => {
             <div id="timer" class="${timerEnabled ? '' : 'off-mode'}">${initialTimer}</div>
           </div>
           <div class="controls">
-            <button id="theme-toggle">☀️/🌙</button>
+            <button id="theme-toggle">☀️🌙</button>
             <button onclick="window.close();">戻る</button>
           </div>
           <script>
