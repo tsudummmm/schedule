@@ -372,19 +372,19 @@ export default function Home() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-// 【修正】0.5秒(500ms)おきに強制的にデータを送る仕組み
+// 【修正】0.1秒(100ms)おきに強制的にデータを送る仕組み
   useEffect(() => {
     const timer = setInterval(() => {
       if (popupRef.current && !popupRef.current.closed) {
         popupRef.current.postMessage({
           type: "UPDATE_TIMER",
           taskName: calculations.current?.task || "No Task",
-          timerText: timerText, // 0.5秒おきに最新の文字列を送信
+          timerText: timerText, // 0.1秒おきに最新の文字列を送信
           isWaiting: !calculations.current,
           timerEnabled: timerEnabled
         }, "*");
       }
-    }, 500); // ここを500(0.5秒)に設定
+    }, 100); // ここを100(0.1秒)に設定
 
     return () => clearInterval(timer); // 画面を閉じたら止める
   }, [calculations.current, timerText, timerEnabled]);
