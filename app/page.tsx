@@ -372,16 +372,21 @@ export default function Home() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
+// 【修正】0.5秒(500ms)おきに強制的にデータを送る仕組み
   useEffect(() => {
-    if (popupRef.current && !popupRef.current.closed) {
-      popupRef.current.postMessage({
-        type: "UPDATE_TIMER",
-        taskName: calculations.current?.task || "No Task",
-        timerText: timerText,
-        isWaiting: !calculations.current,
-        timerEnabled: timerEnabled
-      }, "*");
-    }
+    const timer = setInterval(() => {
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.postMessage({
+          type: "UPDATE_TIMER",
+          taskName: calculations.current?.task || "No Task",
+          timerText: timerText, // 0.5秒おきに最新の文字列を送信
+          isWaiting: !calculations.current,
+          timerEnabled: timerEnabled
+        }, "*");
+      }
+    }, 500); // ここを500(0.5秒)に設定
+
+    return () => clearInterval(timer); // 画面を閉じたら止める
   }, [calculations.current, timerText, timerEnabled]);
 
   const openTimerPopup = () => {
@@ -429,7 +434,7 @@ export default function Home() {
             <div id="timer" class="${timerEnabled ? '' : 'off-mode'}">${initialTimer}</div>
           </div>
           <div class="controls">
-            <button id="theme-toggle">☀️🌙</button>
+            <button id="theme-toggle">☀️/🌙</button>
             <button onclick="window.close();">戻る</button>
           </div>
           <script>
